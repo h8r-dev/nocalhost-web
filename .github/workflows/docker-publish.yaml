@@ -9,7 +9,7 @@ env:
   ORG: h8r-dev
   HELM_REPO: nocalhost-server-forkmain-deploy
   APP_NAME: nocalhost-server
-  SERVICE_NAME: web
+  SERVICE_NAME: nocalhost-web
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
           password: ${{ secrets.REGISTRY_TOKEN }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+        uses: docker/metadata-action@v4.0.1
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -41,6 +41,7 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push Docker image
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
         with:
@@ -63,18 +64,18 @@ jobs:
         uses: andstor/file-existence-action@v1
         with:
           files: "${{ env.APP_NAME }}/env/${{ steps.vars.outputs.branch }}/values.yaml"
-      - name: Update main helm values
+      - name: Update default branch helm values
         uses: mikefarah/yq@master
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         with:
           cmd: pathEnv=".${{ env.SERVICE_NAME }}.image.tag" yq -i 'eval(strenv(pathEnv)) = "${{ steps.vars.outputs.head_commit }}"' ./${{ env.APP_NAME }}/values.yaml
       - name: Update helm values
         uses: mikefarah/yq@master
-        if: steps.check_files.outputs.files_exists == 'true' && github.ref != 'refs/heads/main'
+        if: steps.check_files.outputs.files_exists == 'true' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
         with:
           cmd: pathEnv=".${{ env.SERVICE_NAME }}.image.tag" yq -i 'eval(strenv(pathEnv)) = "${{ steps.vars.outputs.head_commit }}"' ./${{ env.APP_NAME }}/env/${GITHUB_REF##*/}/values.yaml
       - name: Update helm repo
-        if: steps.check_files.outputs.files_exists == 'true' || github.ref == 'refs/heads/main'
+        if: steps.check_files.outputs.files_exists == 'true' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |-
           git config user.email "h8r@robot.dev"
           git config user.name "h8r-robot"
